@@ -1,32 +1,21 @@
 import cv2
-import numpy as np
 from mtcnn import MTCNN
 import os
 
 
+# Класс для обнаружения лиц на видео с заданным интервалом
 class FaceDetector:
-    """
-    Класс для обнаружения лиц на видео с заданным интервалом
-    """
-
     def __init__(self, detection_interval_seconds=2, confidence_threshold=0.9):
-        """
-        Инициализация детектора
-
-        Args:
-            detection_interval_seconds: интервал обнаружения в секундах
-            confidence_threshold: порог уверенности для обнаружения лиц
-        """
         self.detector = MTCNN()
-        self.detection_interval_seconds = detection_interval_seconds
-        self.confidence_threshold = confidence_threshold
+        self.detection_interval_seconds = detection_interval_seconds   # интервал обнаружения в секундах
+        self.confidence_threshold = confidence_threshold    # порог уверенности для обнаружения лиц
         self.frame_count = 0
         self.last_results = []
         self.frame_interval = 0
         self.fps = 0
 
+    # Настройка видео потока
     def setup_video(self, video_path):
-        """Настройка видео потока"""
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
             raise Exception(f"Не удалось открыть видео файл {video_path}")
@@ -37,8 +26,9 @@ class FaceDetector:
 
         return cap
 
+    # Настройка выходного видео файла
     def _setup_output_video(self, output_path, cap):
-        """Настройка выходного видео файла"""
+
         output_dir = os.path.dirname(output_path)
         if output_dir and not os.path.exists(output_dir):
             os.makedirs(output_dir, exist_ok=True)
@@ -55,8 +45,9 @@ class FaceDetector:
 
         return out
 
+    # Обнаружение лиц в одном кадре
     def detect_faces_in_frame(self, frame):
-        """Обнаружение лиц в одном кадре"""
+
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = self.detector.detect_faces(rgb_frame)
 
@@ -73,23 +64,24 @@ class FaceDetector:
 
         return formatted_results
 
+    # Проверка, нужно ли выполнять обнаружение на текущем кадре
     def should_detect_faces(self):
-        """Проверка, нужно ли выполнять обнаружение на текущем кадре"""
+
         return self.frame_count % self.frame_interval == 1
 
-    def draw_detections(self, frame, results):
-        """Отрисовка обнаруженных лиц на кадре"""
-        for result in results:
-            confidence = result['confidence']
-            if confidence > self.confidence_threshold:
-                self._draw_single_face(frame, result)
-        return frame
+    # def draw_detections(self, frame, results):
+    #     """Отрисовка обнаруженных лиц на кадре"""
+    #     for result in results:
+    #         confidence = result['confidence']
+    #         if confidence > self.confidence_threshold:
+    #             self._draw_single_face(frame, result)
+    #     return frame
 
+    # Отрисовка одного обнаруженного лица
     def _draw_single_face(self, frame, result):
-        """Отрисовка одного обнаруженного лица"""
+
         x, y, width, height = result['box']
 
-        # Отрисовка прямоугольника
         cv2.rectangle(frame, (x, y), (x + width, y + height), (0, 255, 0), 2)
 
         # Отображение уверенности
@@ -97,24 +89,24 @@ class FaceDetector:
         cv2.putText(frame, text, (x, y - 10),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
-        # Отрисовка ключевых точек
-        keypoints = result['keypoints']
-        for keypoint in keypoints.values():
-            cv2.circle(frame, keypoint, 2, (0, 0, 255), -1)
+        # # Отрисовка ключевых точек
+        # keypoints = result['keypoints']
+        # for keypoint in keypoints.values():
+        #     cv2.circle(frame, keypoint, 2, (0, 0, 255), -1)
 
-    def draw_frame_info(self, frame):
-        """Отрисовка информации о кадре"""
-        cv2.putText(frame, f"Frame: {self.frame_count}", (10, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-        cv2.putText(frame, f"Faces: {len(self.last_results)}", (10, 60),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-
-        # Информация о следующем обнаружении
-        next_detection = self.frame_interval - (self.frame_count % self.frame_interval)
-        cv2.putText(frame, f"Next detection in: {next_detection} frames", (10, 90),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-
-        return frame
+    # def draw_frame_info(self, frame):
+    #     """Отрисовка информации о кадре"""
+    #     cv2.putText(frame, f"Frame: {self.frame_count}", (10, 30),
+    #                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+    #     cv2.putText(frame, f"Faces: {len(self.last_results)}", (10, 60),
+    #                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+    #
+    #     # Информация о следующем обнаружении
+    #     next_detection = self.frame_interval - (self.frame_count % self.frame_interval)
+    #     cv2.putText(frame, f"Next detection in: {next_detection} frames", (10, 90),
+    #                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+    #
+    #     return frame
 
     # def process_video(self, video_path, output_path=None):
     #     """
@@ -164,11 +156,11 @@ class FaceDetector:
     #         # Корректное освобождение ресурсов
     #         self._cleanup(cap, out, video_path)
 
-    def _cleanup(self, cap, out, video_path):
-        """Освобождение ресурсов"""
-        cap.release()
-        if out and out.isOpened():
-            out.release()
-            print(f"Выходной файл сохранен: {video_path}")
-        cv2.destroyAllWindows()
-        print(f"Всего обработано кадров: {self.frame_count}")
+    # def _cleanup(self, cap, out, video_path):
+    #     """Освобождение ресурсов"""
+    #     cap.release()
+    #     if out and out.isOpened():
+    #         out.release()
+    #         print(f"Выходной файл сохранен: {video_path}")
+    #     cv2.destroyAllWindows()
+    #     print(f"Всего обработано кадров: {self.frame_count}")

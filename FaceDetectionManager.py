@@ -1,6 +1,7 @@
 from FaceDetector import FaceDetector
 from Tracker import Tracker
 import cv2
+from UniqueFacesWriter import UniqueFacesWriter
 
 
 class FaceDetectionManager:
@@ -10,10 +11,13 @@ class FaceDetectionManager:
             confidence_threshold=confidence_threshold
         )
         self.tracker = Tracker(tracker_type)
+        self.unique_manager = UniqueFacesWriter()
         self.frame_count = 0
 
+
+    # Обработка видео с детекцией, трекингом и анализом уникальности
     def process_video(self, video_path, output_path=None):
-        """Обработка видео с детекцией и трекингом"""
+
         cap = self.detector.setup_video(video_path)
 
         # Настройка вывода
@@ -22,7 +26,7 @@ class FaceDetectionManager:
         else:
             out = None
 
-        print("Запуск системы детекции и трекинга...")
+        print("Запуск детекции, трекинга и логгирования...")
 
         try:
             while True:
@@ -38,7 +42,7 @@ class FaceDetectionManager:
                     active_tracks = len(self.tracker.get_active_tracks())
                     print(f"Кадр {self.frame_count}, активных треков: {active_tracks}")
 
-                # ОБНОВЛЕНИЕ ТРЕКЕРОВ - происходит на КАЖДОМ кадре
+                # ОБНОВЛЕНИЕ ТРЕКЕРОВ - происходит на каждом кадре
                 tracks = self.tracker.update_trackers(frame)
 
                 # ДЕТЕКЦИЯ - только каждые 2 секунды
@@ -46,6 +50,14 @@ class FaceDetectionManager:
                     detections = self.detector.detect_faces_in_frame(frame)
                     print(f"Обнаружено {len(detections)} лиц")
                     self.tracker.add_detections(frame, detections)
+
+                    # АНАЛИЗ УНИКАЛЬНОСТИ для новых обнаружений
+                    for detection in detections:
+                        bbox = detection['bbox']
+                        is_new, face_id = self.unique_manager.process_face(frame, bbox)
+
+                        if is_new:
+                            print(f"Обнаружено новое уникальное лицо. ID: {face_id}")
 
                 # Отрисовка результатов
                 frame = self._draw_combined_results(frame, tracks)
@@ -62,13 +74,15 @@ class FaceDetectionManager:
         finally:
             self._cleanup(cap, out)
 
+
+    # Отрисовка треков и информации
     def _draw_combined_results(self, frame, tracks):
-        """Отрисовка треков и информации"""
+
         # Отрисовка треков
         for track_id, track_data in tracks.items():
             x, y, w, h = [int(v) for v in track_data['bbox']]
 
-            # Треки рисуем синим цветом
+            # Треки синим цветом
             cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 0, 0), 2)
             cv2.putText(frame, f"Track {track_id}", (x, y - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
@@ -86,8 +100,9 @@ class FaceDetectionManager:
 
         return frame
 
+    # Освобождение ресурсов
     def _cleanup(self, cap, out):
-        """Освобождение ресурсов"""
+
         cap.release()
         if out and out.isOpened():
             out.release()
