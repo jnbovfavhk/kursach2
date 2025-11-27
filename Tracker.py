@@ -14,6 +14,12 @@ class Tracker:
             return cv2.TrackerCSRT.create()
         elif tracker_name == 'kcf':
             return cv2.TrackerKCF.create()
+        elif tracker_name == 'dasiamrpn':
+            return cv2.TrackerDaSiamRPN
+        elif tracker_name == 'mosse':
+            cv2.legacy.TrackerMOSSE.create()
+        elif tracker_name == 'boosting':
+            cv2.legacy.TrackerBoosting.create()
         else:
             raise ValueError(f"переданное значение {tracker_name} не соответствует ни одному из возможных значений")
 
@@ -67,7 +73,7 @@ class Tracker:
             if success:
                 track_data['bbox'] = bbox
                 updated_tracks[track_id] = track_data
-                print(f"Трек {track_id} успешно обновлен: {bbox}")
+                # print(f"Трек {track_id} успешно обновлен: {bbox}")
             else:
                 tracks_to_remove.append(track_id)
                 print(f"Трек {track_id} потерян")
@@ -82,7 +88,7 @@ class Tracker:
 
     # Добавление новых обнаружений как треков
     def add_detections(self, frame, detections):
-        print(f"Добавляются {len(detections)} обнаружений...")
+        # print(f"Добавляются {len(detections)} обнаружений...")
 
         for detection in detections:
             print(f"Обнаружение: bbox={detection['bbox']}, confidence={detection['confidence']}")

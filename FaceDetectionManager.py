@@ -5,20 +5,28 @@ from UniqueFacesWriter import UniqueFacesWriter
 
 
 class FaceDetectionManager:
-    def __init__(self, detection_interval=2, confidence_threshold=0.9, tracker_type='csrt'):
+    def __init__(self, detection_interval=2, confidence_threshold=0.9, tracker_type='csrt',
+                 iou_threshold=0.4,
+                 meta_output_dir="unique_faces", similarity_threshold=0.6,
+                 padding=15, min_face_size=50, sharpness_threshold=100):
         self.detector = FaceDetector(
             detection_interval_seconds=detection_interval,
             confidence_threshold=confidence_threshold
         )
-        self.tracker = Tracker(tracker_type)
-        self.unique_manager = UniqueFacesWriter()
+        self.tracker = Tracker(tracker_type, iou_threshold=iou_threshold)
+        self.unique_manager = UniqueFacesWriter(output_dir=meta_output_dir,
+                                                similarity_threshold=similarity_threshold,
+                                                padding=padding, min_face_size=min_face_size,
+                                                sharpness_threshold=sharpness_threshold)
         self.frame_count = 0
+        self.fps = None
 
 
     # Обработка видео с детекцией, трекингом и анализом уникальности
     def process_video(self, video_path, output_path=None):
 
         cap = self.detector.setup_video(video_path)
+        self.fps = cap.get(cv2.CAP_PROP_FPS)
 
         # Настройка вывода
         if output_path:
@@ -37,6 +45,8 @@ class FaceDetectionManager:
                 self.detector.frame_count += 1
                 self.frame_count += 1
 
+                current_video_time = self.frame_count / self.fps if self.fps > 0 else 0
+
                 # Логирование
                 if self.frame_count % 30 == 0:
                     active_tracks = len(self.tracker.get_active_tracks())
@@ -54,7 +64,7 @@ class FaceDetectionManager:
                     # АНАЛИЗ УНИКАЛЬНОСТИ для новых обнаружений
                     for detection in detections:
                         bbox = detection['bbox']
-                        is_new, face_id = self.unique_manager.process_face(frame, bbox)
+                        is_new, face_id = self.unique_manager.process_face(frame, bbox, current_video_time)
 
                         if is_new:
                             print(f"Обнаружено новое уникальное лицо. ID: {face_id}")

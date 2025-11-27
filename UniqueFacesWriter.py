@@ -6,16 +6,20 @@ import json
 import threading
 from concurrent.futures import ProcessPoolExecutor
 
+from BeautifulFacesChooser import BeautifulFacesChooser
+
 
 # Класс для отслеживания уникальных лиц и сохранения их в файлы
 class UniqueFacesWriter:
-    def __init__(self, output_dir="unique_faces", similarity_threshold=0.7, padding=15):
+    def __init__(self, output_dir="unique_faces", similarity_threshold=0.6, padding=15, min_face_size=50, sharpness_threshold=100):
         self.output_dir = output_dir    # директория для сохранения уникальных лиц
         self.similarity_threshold = similarity_threshold    # порог схожести лиц (0-1)
         self.known_faces = []  # Список известных лиц
         self.padding = padding
         self.face_counter = 0
         self.lock = threading.Lock()
+
+        self.quality_selector = BeautifulFacesChooser(min_face_size=min_face_size, sharpness_threshold=sharpness_threshold)
 
         self.process_pool = ProcessPoolExecutor(max_workers=2) # process pool для мультипроцесинга
 
@@ -51,6 +55,7 @@ class UniqueFacesWriter:
             }
             with open(metadata_file, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
+                print(f"Метаданные сохранены")
         except Exception as e:
             print(f"Ошибка сохранения метаданных: {e}")
 
@@ -103,6 +108,8 @@ class UniqueFacesWriter:
             return 0
 
         similarity = dot_product / (norm1 * norm2)
+
+        # print(f"Похожесть нового лица на то, что уже было: {similarity}")
         return similarity
 
 
@@ -132,24 +139,44 @@ class UniqueFacesWriter:
 
         try:
             # Сохраняем изображение
-            filename = f"face_{face_id:03d}_{detection_time.strftime('%Y%m%d_%H%M%S')}.jpg"
+            filename = f"face_{face_id:03d}.jpg"
             filepath = os.path.join(self.output_dir, filename)
             cv2.imwrite(filepath, face_image)
 
             # Добавляем в известные лица
             face_features = self._calculate_face_features(face_image)
 
-            self.known_faces.append({
-                'face_id': face_id,
-                'filename': filename,
-                'first_seen': detection_time.isoformat(),
-                'features': face_features.tolist() if face_features is not None else []
-            })
+            face_quality = self.quality_selector.get_face_quality(face_image,
+                                                                  [0, 0, face_image.shape[1], face_image.shape[0]])
 
-            # Сохраняем метаданные
-            self._save_metadata()
+            existing_index = -1
+            for i, face in enumerate(self.known_faces):
+                if face['face_id'] == face_id:
+                    existing_index = i
+                    break
 
-            print(f"Сохранено новое лицо. ID: {face_id} в файл: {filename}")
+            with self.lock:
+                if existing_index != -1:
+                    # Обновляем существующую запись
+                    self.known_faces[existing_index].update({
+                        'filename': filename,
+                        'features': face_features.tolist() if face_features is not None else [],
+                        'quality': face_quality
+                    })
+                    print(f"Обновлено лицо ID: {face_id}")
+                else:
+                    # Добавляем новую запись
+                    self.known_faces.append({
+                        'face_id': face_id,
+                        'filename': filename,
+                        'first_seen': detection_time,
+                        'features': face_features.tolist() if face_features is not None else [],
+                        'quality': face_quality
+                    })
+                    print(f"Сохранено новое лицо. ID: {face_id} в файл: {filename}")
+
+                self._save_metadata()
+
             return True
 
         except Exception as e:
@@ -158,7 +185,7 @@ class UniqueFacesWriter:
 
 
     # Основной метод обработки лица
-    def process_face(self, frame, bbox):
+    def process_face(self, frame, bbox, video_time=None):
 
         face_image = self.extract_face_image(frame, bbox)
         if face_image is None:
@@ -183,16 +210,75 @@ class UniqueFacesWriter:
                 self.face_counter += 1
                 new_face_id = self.face_counter
 
-            detection_time = datetime.now()
+            # Вычисляем время появления
+            if video_time is not None:
+                detection_time = self._format_video_time(video_time)
+            else:
+                detection_time = datetime.now()
+
             success = self.save_face_image(face_image, new_face_id, detection_time)
             if success:
                 return True, new_face_id
             else:
                 return False, None
         else:
+            self._select_better_face(existing_face_id, face_image, bbox, video_time)
             print(f"Известное лицо ID: {existing_face_id}")
             return False, existing_face_id
 
+    # Выбираем, текущее лицо лучше или уже записанное в файл
+    def _select_better_face(self, face_id, new_face_image, new_bbox, video_time):
+        try:
+            # Находим информацию о существующем лице
+            existing_face_info = None
+            for face in self.known_faces:
+                if face['face_id'] == face_id:
+                    existing_face_info = face
+                    break
+
+            if not existing_face_info:
+                return
+
+            existing_filepath = os.path.join(self.output_dir, existing_face_info['filename'])
+
+            # Получаем качество существующего лица из метаданных
+
+            existing_quality = existing_face_info.get('quality', 0)
+
+            # Сравниваем качество
+            new_quality = self.quality_selector.get_face_quality(new_face_image, new_bbox)
+
+            print(f"Старое: {existing_quality} и новое: {new_quality}")
+
+            if new_quality > existing_quality:
+
+                # Сохраняем лучшую версию
+                # Удаляем старое изображение
+                if os.path.exists(existing_filepath):
+                    os.remove(existing_filepath)
+
+                # Сохраняем новое изображение
+                detection_time = existing_face_info.get('first_seen')
+                success = self.save_face_image(new_face_image, face_id, detection_time)
+
+                if success:
+                    print(f"Для лица {face_id} файл перезаписан")
+            else:
+                print(f"Лицо {face_id} уже имеет красивый файл")
+
+        except Exception as e:
+            print(f"Ошибка улучшения качества лица {face_id}: {e}")
+
+
+    # Форматирует время видео в читаемый формат
+    def _format_video_time(self, seconds):
+
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        secs = int(seconds % 60)
+        milliseconds = int((seconds - int(seconds)) * 1000)
+
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}.{milliseconds:03d}"
     # Статистика
     # def get_stats(self):
     #
