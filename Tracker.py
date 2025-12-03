@@ -15,11 +15,11 @@ class Tracker:
         elif tracker_name == 'kcf':
             return cv2.TrackerKCF.create()
         elif tracker_name == 'dasiamrpn':
-            return cv2.TrackerDaSiamRPN
+            return cv2.TrackerDaSiamRPN.create()
         elif tracker_name == 'mosse':
-            cv2.legacy.TrackerMOSSE.create()
+            return cv2.legacy.TrackerMOSSE.create()
         elif tracker_name == 'boosting':
-            cv2.legacy.TrackerBoosting.create()
+            return cv2.legacy.TrackerBoosting.create()
         else:
             raise ValueError(f"переданное значение {tracker_name} не соответствует ни одному из возможных значений")
 
